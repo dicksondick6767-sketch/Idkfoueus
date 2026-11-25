@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Dodger</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background: #0d0f1a;
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+      user-select: none;
+    }
+    #hud {
+      width: 400px;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    canvas {
+      background: #141829;
+      border: 2px solid #2b3252;
+      border-radius: 10px;
+      box-shadow: 0 0 25px rgba(0, 240, 255, 0.15);
+      display: block;
+    }
+    #hint {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #8b95b5;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <span>Score: <span id="score">0</span></span>
+    <span>Best: <span id="best">0</span></span>
+  </div>
+  <canvas id="game" width="400" height="560"></canvas>
+  <div id="hint">Move: Arrow Keys / A & D / Touch &bull; Restart: Space or Tap</div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+
+    let bestScore = Number(localStorage.getItem("neonDodgerBest")) || 0;
+    bestEl.textContent = bestScore;
+
+    const player = {
+      width: 44,
+      height: 16,
+      x: canvas.width / 2 - 22,
+      y: canvas.height - 45,
+      speed: 6,
+      color: "#00f0ff"
+    };
+
+    let obstacles = [];
+    let score = 0;
+    let frame = 0;
+    let gameOver = false;
+    let keys = {};
+
+    // Keyboard controls
+    window.addEventListener("keydown", (e) => {
+      keys[e.key.toLowerCase()] = true;
+      if (gameOver && e.code === "Space") resetGame();
+    });
+    window.addEventListener("keyup", (e) => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    // Touch / mouse controls for mobile or quick testing
+    canvas.addEventListener("pointerdown", (e) => {
+      if (gameOver) {
+        resetGame();
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      player.x = Math.max(0, Math.min(canvas.width - player.width, clickX - player.width / 2));
+    });
+
+    canvas.addEventListener("pointermove", (e) => {
+      if (e.buttons === 1 && !gameOver) {
+        const rect = canvas.getBoundingClientRect();
+        const moveX = e.clientX - rect.left;
+        player.x = Math.max(0, Math.min(canvas.width - player.width, moveX - player.width / 2));
+      }
+    });
+
+    function resetGame() {
+      obstacles = [];
+      score = 0;
+      frame = 0;
+      gameOver = false;
+      player.x = canvas.width / 2 - player.width / 2;
+      scoreEl.textContent = 0;
+      loop();
+    }
+
+    function spawnObstacle() {
+      const width = Math.floor(Math.random() * 65) + 35;
+      const x = Math.random() * (canvas.width - width);
+      const speed = 3 + Math.min(score * 0.08, 6);
+      obstacles.push({
+        x,
+        y: -25,
+        width,
+        height: 18,
+        speed,
+        color: "#ff2a6d"
+      });
+    }
+
+    function update() {
+      frame++;
+
+      // Move player
+      if (keys["arrowleft"] || keys["a"]) player.x -= player.speed;
+      if (keys["arrowright"] || keys["d"]) player.x += player.speed;
+      player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+
+      // Spawn rate speeds up slightly over time
+      const spawnRate = Math.max(18, 42 - Math.floor(score / 3));
+      if (frame % spawnRate === 0) spawnObstacle();
+
+      // Update obstacles
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const obs = obstacles[i];
+        obs.y += obs.speed;
+
+        // Collision check
+        if (
+          player.x < obs.x + obs.width &&
+          player.x + player.width > obs.x &&
+          player.y < obs.y + obs.height &&
+          player.y + player.height > obs.y
+        ) {
+          gameOver = true;
+          if (score > bestScore) {
+            bestScore = score;
+            localStorage.setItem("neonDodgerBest", bestScore);
+            bestEl.textContent = bestScore;
+          }
+        }
+
+        // Remove off-screen blocks and add score
+        if (obs.y > canvas.height) {
+          obstacles.splice(i, 1);
+          score++;
+          scoreEl.textContent = score;
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw player
+      ctx.fillStyle = player.color;
+      ctx.shadowColor = player.color;
+      ctx.shadowBlur = 12;
+      ctx.fillRect(player.x, player.y, player.width, player.height);
+
+      // Draw obstacles
+      obstacles.forEach((obs) => {
+        ctx.fillStyle = obs.color;
+        ctx.shadowColor = obs.color;
+        ctx.shadowBlur = 10;
+        ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+      });
+
+      ctx.shadowBlur = 0;
+
+      // Game Over overlay
+      if (gameOver) {
+        ctx.fillStyle = "rgba(13, 15, 26, 0.8)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 32px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 15);
+
+        ctx.font = "16px system-ui, sans-serif";
+        ctx.fillStyle = "#00f0ff";
+        ctx.fillText("Press Space or Tap to Play Again", canvas.width / 2, canvas.height / 2 + 20);
+      }
+    }
+
+    function loop() {
+      if (gameOver) {
+        draw();
+        return;
+      }
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>
